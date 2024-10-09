@@ -1,0 +1,9 @@
+[package]
+name = "minecraft_server_impl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+byteorder = "1.5.0"
+colog = "1.3.0"
+log = "0.4.22"
