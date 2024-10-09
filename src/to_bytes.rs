@@ -11,6 +11,7 @@ mod private {
     pub trait ByteArray {}
 
     impl<const N: usize> ByteArray for [u8; N] {}
+    impl ByteArray for Vec<u8> {}
 }
 
 
@@ -21,18 +22,19 @@ pub trait ByteArray:
     + AsRef<[u8]>
     + AsMut<[u8]>
 {
-    /// The length of this byte array.
-    const SIZE: usize;
-
     /// Return the array with all zeros.
     /// Cannot use `Default` as it is not implemented for all array sizes.
     fn zeroed() -> Self;
 }
 
 impl<const N: usize> ByteArray for [u8; N] {
-    const SIZE: usize = N;
-
     fn zeroed() -> Self {
         [0; N]
+    }
+}
+
+impl ByteArray for Vec<u8> {
+    fn zeroed() -> Self {
+        Vec::new()
     }
 }

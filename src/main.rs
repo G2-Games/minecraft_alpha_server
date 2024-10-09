@@ -1,8 +1,10 @@
 mod utils;
 mod to_bytes;
+mod chunk;
 
 use std::{io::{self, Write}, net::{TcpListener, TcpStream}};
 
+use chunk::PreChunk;
 use log::{info, warn};
 use byteorder::{ReadBytesExt, WriteBytesExt, BE};
 use to_bytes::ToBytes;
@@ -126,25 +128,5 @@ impl ServerLoginPacket {
         stream.write_i8(self.dimension)?;
 
         Ok(())
-    }
-}
-
-#[repr(C)]
-struct PreChunk {
-    x_coord: i32,
-    z_coord: i32,
-    mode: bool, // True to load, False to unload
-}
-
-impl ToBytes for PreChunk {
-    type Bytes = [u8; 9];
-
-    fn to_bytes(self) -> Self::Bytes {
-        let mut buffer = Vec::new();
-        buffer.write_i32::<BE>(self.x_coord).unwrap();
-        buffer.write_i32::<BE>(self.z_coord).unwrap();
-        buffer.write_u8(self.mode as u8).unwrap();
-
-        buffer.try_into().unwrap()
     }
 }
