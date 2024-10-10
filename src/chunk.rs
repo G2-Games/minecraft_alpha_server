@@ -62,6 +62,45 @@ impl BlockArray {
             compressed_data: output_buf,
         }
     }
+
+    pub fn new_superflat() -> Self {
+        let mut block_vec = vec![0; 16 * 16 * 128];
+
+        for x in 0..16 {
+            for y in 0..128 {
+                for z in 0..16 {
+                    let pos = y + (z * (128)) + (x * (128) * (16));
+                    if y == 7 {
+                        block_vec[pos] = BlockType::Grass as u8;
+                    } else if y > 0 && y < 7 {
+                        block_vec[pos] = BlockType::Dirt as u8;
+                    } else if y == 0 {
+                        block_vec[pos] = BlockType::Bedrock as u8;
+                    } else {
+                        block_vec[pos] = 0;
+                    }
+                }
+            }
+        }
+        for _ in 0..(16 * 128 * 16) / 2 {
+            block_vec.push(0);
+        }
+        for _ in 0..(16 * 128 * 16) / 2 {
+            block_vec.push(0);
+        }
+        for _ in 0..(16 * 128 * 16) / 2 {
+            block_vec.push(0xFF);
+        }
+
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write(&block_vec).unwrap();
+        let output_buf = encoder.finish().unwrap();
+
+        Self {
+            compressed_size: output_buf.len() as i32,
+            compressed_data: output_buf,
+        }
+    }
 }
 
 #[repr(u8)]
