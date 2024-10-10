@@ -3,10 +3,10 @@ use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use std::io::prelude::*;
 
-use crate::to_bytes::ToBytes;
+use crate::byte_ops::ToBytes;
 
 #[derive(Debug, Clone)]
-struct MapChunk {
+pub struct MapChunk {
     chunk_x: i32,
     chunk_y: i16,
     chunk_z: i32,
@@ -17,7 +17,7 @@ struct MapChunk {
 }
 
 impl MapChunk {
-    fn new(chunk_x: i32, chunk_z: i32, compressed_data: BlockArray) -> Self {
+    pub fn new(chunk_x: i32, chunk_z: i32, compressed_data: BlockArray) -> Self {
         Self {
             chunk_x,
             chunk_y: 0,
@@ -31,34 +31,35 @@ impl MapChunk {
 }
 
 #[derive(Debug, Clone)]
-struct BlockArray {
+pub struct BlockArray {
     compressed_size: i32,
     compressed_data: Vec<u8>,
 }
 
 impl BlockArray {
-    fn new_air() -> Self {
-        let mut output_vec = Vec::new();
+    pub fn new_air() -> Self {
+        let mut block_vec = Vec::new();
 
         for _ in 0..(16 * 127 * 15) {
-            output_vec.push(0);
+            block_vec.push(0);
         }
         for _ in 0..(16 * 127 * 15) / 2 {
-            output_vec.push(0);
+            block_vec.push(0);
         }
         for _ in 0..(16 * 127 * 15) / 2 {
-            output_vec.push(0);
+            block_vec.push(0);
         }
         for _ in 0..(16 * 127 * 15) / 2 {
-            output_vec.push(0);
+            block_vec.push(0);
         }
 
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write(&output_vec).unwrap();
+        encoder.write(&block_vec).unwrap();
+        let output_buf = encoder.finish().unwrap();
 
         Self {
-            compressed_size: 1,
-            compressed_data: encoder.finish().unwrap(),
+            compressed_size: output_buf.len() as i32,
+            compressed_data: output_buf,
         }
     }
 }
@@ -87,6 +88,9 @@ impl ToBytes for MapChunk {
         buffer.write_u8(self.size_y).unwrap();
         buffer.write_u8(self.size_z).unwrap();
 
+        buffer.write_i32::<BE>(self.compressed_data.compressed_size).unwrap();
+        buffer.write_all(&self.compressed_data.compressed_data).unwrap();
+
         buffer
     }
 }
@@ -96,6 +100,24 @@ pub struct PreChunk {
     pub x_coord: i32,
     pub z_coord: i32,
     pub mode: bool, // True to load, False to unload
+}
+
+impl PreChunk {
+    pub fn new_load(x_coord: i32, z_coord: i32) -> Self {
+        Self {
+            x_coord,
+            z_coord,
+            mode: true
+        }
+    }
+
+    pub fn new_unload(x_coord: i32, z_coord: i32) -> Self {
+        Self {
+            x_coord,
+            z_coord,
+            mode: true
+        }
+    }
 }
 
 impl ToBytes for PreChunk {

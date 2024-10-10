@@ -23,6 +23,21 @@ impl TryFrom<&str> for MCString {
     }
 }
 
+impl TryFrom<String> for MCString {
+    type Error = ();
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.len() > u16::MAX as usize {
+            return Err(())
+        }
+
+        Ok(Self {
+            len: value.len() as u16,
+            chars: value.as_bytes().to_vec(),
+        })
+    }
+}
+
 impl Display for MCString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", String::from_utf8(self.chars.clone()).unwrap())
