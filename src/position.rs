@@ -4,13 +4,13 @@ use byteorder::{ReadBytesExt, WriteBytesExt, BE};
 
 use crate::byte_ops::ToBytes;
 
-#[derive(Debug, Clone, Copy)]
-pub struct PlayerPositionAndLook {
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct PlayerPositionLook {
     pub position: PlayerPosition,
     pub look: PlayerLook,
 }
 
-impl ToBytes for PlayerPositionAndLook {
+impl ToBytes for PlayerPositionLook {
     type Bytes = Vec<u8>;
 
     fn to_bytes(self) -> Self::Bytes {
@@ -27,7 +27,7 @@ impl ToBytes for PlayerPositionAndLook {
     }
 }
 
-impl PlayerPositionAndLook {
+impl PlayerPositionLook {
     pub fn from_bytes<R: Read>(stream: &mut R) -> Self {
         let position_x = stream.read_f64::<BE>().unwrap();
         let position_y = stream.read_f64::<BE>().unwrap();
@@ -54,7 +54,7 @@ impl PlayerPositionAndLook {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct PlayerPosition {
     pub position_x: f64,
     pub position_y: f64,
@@ -95,7 +95,7 @@ impl PlayerPosition {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct PlayerLook {
     pub yaw: f32,
     pub pitch: f32,

@@ -4,31 +4,33 @@ mod chunk;
 mod position;
 mod state;
 mod player;
+mod blocks_items;
 
-use std::{io::{self, Write}, net::{TcpListener, TcpStream}, sync::RwLock};
+use std::{io::{self, Write}, net::{TcpListener, TcpStream}, sync::{atomic::{self, AtomicI32}, Arc, RwLock}, thread};
 
 use base16ct::lower::encode_string;
 use chunk::{BlockArray, MapChunk, PreChunk};
-use log::{info, warn};
+use log::{error, info, warn};
 use byteorder::{ReadBytesExt, WriteBytesExt, BE};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use byte_ops::ToBytes;
 use player::{DiggingStatus, PlayerBlockPlacement};
-use position::{PlayerLook, PlayerPosition, PlayerPositionAndLook};
-use state::PlayerState;
+use position::{PlayerLook, PlayerPosition, PlayerPositionLook};
+use state::{GameState, PlayerState};
 use utils::{MCString, ReadMCString, WriteMCString};
 use rand::random;
 
-/// List of players.
-const PLAYER_LIST: RwLock<Vec<PlayerState>> = RwLock::new(Vec::new());
-
 /// The current Entity ID. Incremented by one every time there is a new entity.
-const ENTITY_ID: RwLock<i32> = RwLock::new(0);
+///
+/// This value should rarely be accessed directly, and definitely never updated.
+static ENTITY_ID: AtomicI32 = AtomicI32::new(0);
 
+/// Get an Entity ID and increment the global value by 1.
+#[inline]
 fn get_eid() -> i32 {
-    let eid = ENTITY_ID.read().unwrap().clone();
-    *ENTITY_ID.write().unwrap() += 1;
+    let eid = ENTITY_ID.load(atomic::Ordering::Relaxed);
+    ENTITY_ID.store(eid + 1, atomic::Ordering::Relaxed);
 
     eid
 }
@@ -38,31 +40,76 @@ fn main() {
         .filter_level(log::LevelFilter::Debug)
         .init();
 
+    info!("Setting up game state");
+    let game_state: Arc<RwLock<GameState>> = Arc::new(RwLock::new(GameState::new()));
+
     let listener = TcpListener::bind("0.0.0.0:25565").unwrap();
     info!("Server started and listening on {}", listener.local_addr().unwrap());
 
     for mut connection in listener.incoming().filter_map(|c| c.ok()) {
         info!("Player joined from {}", connection.peer_addr().unwrap());
-        while let Some(cmd) = connection.read_u8().ok() {
-            let command = Command::from_u8(cmd);
-            if command.is_none() {
-                info!("COMMAND: {command:?} (0x{cmd:02X?})");
-                panic!("This command isn't implemented yet");
-            }
-            handle_command(&mut connection, command.unwrap()).unwrap();
-        }
-        warn!("Lost connection to client");
+        let mut game_state = Arc::clone(&game_state);
+        thread::spawn(move || {
+            player_loop(
+                &mut connection,
+                &mut game_state,
+            ).unwrap();
+
+            info!("Connection dropped for {}", connection.peer_addr().unwrap());
+        });
     }
 }
 
-fn handle_command(mut connection: &mut TcpStream, command: Command) -> Result<(), io::Error> {
+fn player_loop(
+    mut connection: &mut TcpStream,
+    game_state: &mut Arc<RwLock<GameState>>,
+) -> Result<(), io::Error> {
+    let mut player_state = PlayerState::new_invalid();
+    loop {
+        if let Ok(cmd) = connection.read_u8() {
+            let command = Command::from_u8(cmd);
+            if command.is_none() {
+                error!("COMMAND: {command:?} (0x{cmd:02X?})");
+                panic!("This command isn't implemented yet");
+            }
+
+            handle_command(
+                &mut connection,
+                command.unwrap(),
+                &mut player_state,
+            ).unwrap();
+        } else {
+            break;
+        }
+
+        if player_state.is_valid() {
+            if game_state.read().unwrap().player_list().get(player_state.username()).is_some_and(|p| *p != player_state)
+                || game_state.read().unwrap().player_list().get(player_state.username()).is_none()
+            {
+                game_state.write()
+                    .unwrap()
+                    .player_list_mut()
+                    .insert(player_state.username().clone(), player_state.clone());
+            }
+        }
+
+    }
+
+    Ok(())
+}
+
+fn handle_command(
+    mut connection: &mut TcpStream,
+    command: Command,
+    player_state: &mut PlayerState,
+) -> Result<(), io::Error> {
     match command {
         Command::Handshake => {
             let username = connection.read_mcstring()?;
             let random_number = random::<u128>();
             let random_hash = encode_string(md5::compute(random_number.to_le_bytes()).as_slice());
 
-            connection.write_u8(0x02)?;
+            connection.write_u8(Command::Handshake as u8)?;
             connection.write_mcstring(&MCString::try_from(random_hash).unwrap())?;
 
             info!("Handshake with {username} successful");
@@ -75,20 +122,14 @@ fn handle_command(mut connection: &mut TcpStream, command: Command) -> Result<()
             let _map_seed = connection.read_i64::<BE>()?;
             let _dimension = connection.read_i8()?;
 
+            // Return a successful login packet to the client
             let eid = get_eid();
-            let login_packet = ServerLoginPacket {
-                entity_id: eid,
-                unknown1: MCString::default(),
-                unknown2: MCString::default(),
-                map_seed: 0,
-                dimension: 0,
-            };
+            let login_packet = ServerLoginPacket::new(eid, 0, 0);
             connection.write_u8(Command::Login as u8).unwrap();
-            connection.write(&login_packet.to_bytes())?;
-
-            PLAYER_LIST.write().unwrap().push(PlayerState::new(username.to_string(), eid));
+            connection.write_all(&login_packet.to_bytes())?;
 
             info!("{username} logged in. Protocol version {protocol_version}");
+            *player_state = PlayerState::new(username.to_string(), eid);
 
             for i in -10..10 {
                 for o in -10..10 {
@@ -105,15 +146,15 @@ fn handle_command(mut connection: &mut TcpStream, command: Command) -> Result<()
 
             connection.write_u8(Command::SpawnPosition as u8)?;
             connection.write_u32::<BE>(0)?;
-            connection.write_u32::<BE>(70)?;
+            connection.write_u32::<BE>(0)?;
             connection.write_u32::<BE>(0)?;
 
-            let playerpos = PlayerPositionAndLook {
+            let playerpos = PlayerPositionLook {
                 position: PlayerPosition {
-                    position_x: 1.0,
+                    position_x: 0.5,
                     stance: 0.0,
                     position_y: 9.63,
-                    position_z: 1.0,
+                    position_z: 0.5,
                 },
                 look: PlayerLook {
                     yaw: 0.0,
@@ -124,19 +165,28 @@ fn handle_command(mut connection: &mut TcpStream, command: Command) -> Result<()
             connection.write_all(&playerpos.to_bytes())?;
         },
         Command::ChatMessage => {
-            info!("Chat Message Recieved: {}", connection.read_mcstring().unwrap());
+            let message = connection.read_mcstring().unwrap();
+            info!("Chat Message Recieved: {message}");
         }
         Command::Player => {
             connection.read_u8()?;
         },
         Command::PlayerLook => {
-            let _look = PlayerLook::from_bytes(&mut connection);
+            let look = PlayerLook::from_bytes(&mut connection);
+            player_state.set_look(look);
         }
         Command::PlayerPosition => {
-            let _pos = PlayerPosition::from_bytes(&mut connection);
+            let pos = PlayerPosition::from_bytes(&mut connection);
+            player_state.set_position(pos);
         }
         Command::PlayerPositionAndLook => {
-            let _poslook = PlayerPositionAndLook::from_bytes(&mut connection);
+            let poslook = PlayerPositionLook::from_bytes(&mut connection);
+            player_state.set_look(poslook.look);
+            player_state.set_position(poslook.position);
+        }
+        Command::HoldingChange => {
+            let _unused = connection.read_i32::<BE>()?;
+            let block_id = connection.read_i16::<BE>()?;
         }
         Command::PlayerDigging => {
             let _status = DiggingStatus::from_u8(connection.read_u8()?).unwrap();
@@ -147,12 +197,10 @@ fn handle_command(mut connection: &mut TcpStream, command: Command) -> Result<()
         }
         Command::PlayerBlockPlacement => {
             let _status = PlayerBlockPlacement::from_bytes(&mut connection);
-            dbg!(_status);
         }
-        Command::ArmAnimation => {
+        Command::Animation => {
             let _eid = connection.read_i32::<BE>()?;
-            let _animate = connection.read_u8()? != 0;
-            dbg!(_animate);
+            let _animate = connection.read_u8()?;
         }
         Command::Disconnect => {
             let disconnect_string = connection.read_mcstring()?;
@@ -160,12 +208,12 @@ fn handle_command(mut connection: &mut TcpStream, command: Command) -> Result<()
             connection.shutdown(std::net::Shutdown::Both)?;
         }
         Command::KeepAlive => {
-            let _ = connection.write_u8(0x00);
+            connection.write_u8(Command::KeepAlive as u8)?;
         }
         Command::UpdateHealth => {
             connection.read_u8()?;
         }
-        c => unimplemented!("This command ({c:?}) is probably `Server -> Client` only")
+        c => unimplemented!("This command ({c:?}) is probably `Server -> Client` only; thus it is unimplemented for the other way around!")
     }
 
     Ok(())
@@ -190,9 +238,26 @@ enum Command {
     PlayerPositionAndLook = 0x0D,
     PlayerDigging = 0x0E,
     PlayerBlockPlacement = 0x0F,
-    ArmAnimation = 0x12,
+    HoldingChange = 0x10,
+    AddToInventory = 0x11,
+    Animation = 0x12,
+    NamedEntitySpawn = 0x14,
+    PickupSpawn = 0x15,
+    CollectItem = 0x16,
+    AddObject = 0x17,
+    MobSpawn = 0x18,
+    EntityVelocity = 0x1C,
+    DestroyEntity = 0x1D,
+    Entity = 0x1E,
+    EntityRelativeMove = 0x1F,
+    EntityLook = 0x20,
+    EntityLookAndRelativeMove = 0x21,
+    EntityTeleport = 0x22,
+    AttachEntity = 0x27,
     PreChunk = 0x32,
     MapChunk = 0x33,
+    BlockChange = 0x35,
+    ComplexEntities = 0x3B,
     Disconnect = 0xFF,
 }
 

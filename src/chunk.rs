@@ -47,13 +47,12 @@ const CHUNK_TOTAL_BLOCKS: usize = CHUNK_WIDTH_X * CHUNK_WIDTH_Z * CHUNK_HEIGHT_Y
 impl BlockArray {
     fn compress(self) -> Vec<u8> {
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write(&self.blocks).unwrap();
-        encoder.write(&self.metadata).unwrap();
-        encoder.write(&self.block_light).unwrap();
-        encoder.write(&self.sky_light).unwrap();
-        let output_buf = encoder.finish().unwrap();
+        encoder.write_all(&self.blocks).unwrap();
+        encoder.write_all(&self.metadata).unwrap();
+        encoder.write_all(&self.block_light).unwrap();
+        encoder.write_all(&self.sky_light).unwrap();
 
-        output_buf
+        encoder.finish().unwrap()
     }
 
     pub fn new_air() -> Self {

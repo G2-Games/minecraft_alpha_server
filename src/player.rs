@@ -1,6 +1,6 @@
 use std::io::Read;
 
-use byteorder::{ReadBytesExt, WriteBytesExt, BE};
+use byteorder::{ReadBytesExt, BE};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 

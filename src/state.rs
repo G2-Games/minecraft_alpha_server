@@ -1,16 +1,36 @@
+use std::collections::BTreeMap;
+
 use crate::{
-    chunk::MapChunk, position::{PlayerLook, PlayerPosition},
+    chunk::{BlockType, MapChunk},
+    position::{PlayerLook, PlayerPosition, PlayerPositionLook},
 };
 
 pub struct GameState {
-
+    player_list: BTreeMap<String, PlayerState>,
 }
 
+impl GameState {
+    pub fn new() -> Self {
+        Self {
+            player_list: BTreeMap::new()
+        }
+    }
+
+    pub fn player_list(&self) -> &BTreeMap<String, PlayerState> {
+        &self.player_list
+    }
+
+    pub fn player_list_mut(&mut self) -> &mut BTreeMap<String, PlayerState> {
+        &mut self.player_list
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct PlayerState {
     eid: i32,
     username: String,
-    position: PlayerPosition,
-    look: PlayerLook,
+    holding: i16,
+    position_look: PlayerPositionLook,
 }
 
 impl PlayerState {
@@ -19,9 +39,58 @@ impl PlayerState {
         Self {
             eid,
             username,
-            position: PlayerPosition::default(),
-            look: PlayerLook::default(),
+            holding: -1,
+            position_look: PlayerPositionLook::default(),
         }
+    }
+
+    pub fn new_invalid() -> Self {
+        Self {
+            eid: -1,
+            username: String::new(),
+            holding: -1,
+            position_look: PlayerPositionLook::default(),
+        }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        if self.eid >= 0 && self.username != String::new() {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn username(&self) -> &String {
+        &self.username
+    }
+
+    pub fn look(&self) -> &PlayerLook {
+        &self.position_look.look
+    }
+
+    pub fn position(&self) -> &PlayerPosition {
+        &self.position_look.position
+    }
+
+    pub fn position_look(&self) -> &PlayerPositionLook {
+        &self.position_look
+    }
+
+    pub fn holding(&self) -> &BlockType {
+        &self.holding
+    }
+
+    pub fn set_position(&mut self, position: PlayerPosition) {
+        self.position_look.position = position
+    }
+
+    pub fn set_look(&mut self, look: PlayerLook) {
+        self.position_look.look = look
+    }
+
+    pub fn set_holding(&mut self, holding: i16) {
+        self.holding = holding
     }
 }
 
