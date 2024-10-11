@@ -1,6 +1,7 @@
 use byteorder::{WriteBytesExt, BE};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
+use num_derive::FromPrimitive;
 use std::io::prelude::*;
 
 use crate::byte_ops::ToBytes;
@@ -32,79 +33,71 @@ impl MapChunk {
 
 #[derive(Debug, Clone)]
 pub struct BlockArray {
-    compressed_size: i32,
-    compressed_data: Vec<u8>,
+    blocks: Vec<u8>,
+    metadata: Vec<u8>,
+    block_light: Vec<u8>,
+    sky_light: Vec<u8>,
 }
 
+const CHUNK_WIDTH_X: usize = 16;
+const CHUNK_WIDTH_Z: usize = 16;
+const CHUNK_HEIGHT_Y: usize = 128;
+const CHUNK_TOTAL_BLOCKS: usize = CHUNK_WIDTH_X * CHUNK_WIDTH_Z * CHUNK_HEIGHT_Y;
+
 impl BlockArray {
-    pub fn new_air() -> Self {
-        let mut block_vec = Vec::new();
-
-        for _ in 0..(16 * 127 * 15) {
-            block_vec.push(0);
-        }
-        for _ in 0..(16 * 127 * 15) / 2 {
-            block_vec.push(0);
-        }
-        for _ in 0..(16 * 127 * 15) / 2 {
-            block_vec.push(0);
-        }
-        for _ in 0..(16 * 127 * 15) / 2 {
-            block_vec.push(0);
-        }
-
+    fn compress(self) -> Vec<u8> {
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write(&block_vec).unwrap();
+        encoder.write(&self.blocks).unwrap();
+        encoder.write(&self.metadata).unwrap();
+        encoder.write(&self.block_light).unwrap();
+        encoder.write(&self.sky_light).unwrap();
         let output_buf = encoder.finish().unwrap();
 
+        output_buf
+    }
+
+    pub fn new_air() -> Self {
         Self {
-            compressed_size: output_buf.len() as i32,
-            compressed_data: output_buf,
+            blocks: vec![0; CHUNK_TOTAL_BLOCKS],
+            metadata: vec![0; CHUNK_TOTAL_BLOCKS / 2],
+            block_light: vec![0; CHUNK_TOTAL_BLOCKS / 2],
+            sky_light: vec![0xFF; CHUNK_TOTAL_BLOCKS / 2],
         }
     }
 
     pub fn new_superflat() -> Self {
-        let mut block_vec = vec![0; 16 * 16 * 128];
-
-        for x in 0..16 {
-            for y in 0..128 {
-                for z in 0..16 {
-                    let pos = y + (z * (128)) + (x * (128) * (16));
+        let mut blocks = vec![0; CHUNK_TOTAL_BLOCKS];
+        for y in 0..CHUNK_HEIGHT_Y {
+            for x in 0..CHUNK_WIDTH_X {
+                for z in 0..CHUNK_WIDTH_Z {
+                    let pos = y + (z * (CHUNK_HEIGHT_Y)) + (x * (CHUNK_HEIGHT_Y) * (CHUNK_WIDTH_X));
                     if y == 7 {
-                        block_vec[pos] = BlockType::Grass as u8;
+                        blocks[pos] = BlockType::Grass as u8;
                     } else if y > 0 && y < 7 {
-                        block_vec[pos] = BlockType::Dirt as u8;
+                        blocks[pos] = BlockType::Dirt as u8;
                     } else if y == 0 {
-                        block_vec[pos] = BlockType::Bedrock as u8;
+                        blocks[pos] = BlockType::Bedrock as u8;
                     } else {
-                        block_vec[pos] = 0;
+                        blocks[pos] = BlockType::Air as u8;
                     }
                 }
             }
         }
-        for _ in 0..(16 * 128 * 16) / 2 {
-            block_vec.push(0);
-        }
-        for _ in 0..(16 * 128 * 16) / 2 {
-            block_vec.push(0);
-        }
-        for _ in 0..(16 * 128 * 16) / 2 {
-            block_vec.push(0xFF);
-        }
-
-        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write(&block_vec).unwrap();
-        let output_buf = encoder.finish().unwrap();
 
         Self {
-            compressed_size: output_buf.len() as i32,
-            compressed_data: output_buf,
+            blocks,
+            metadata: vec![0xFF; CHUNK_TOTAL_BLOCKS / 2],
+            block_light: vec![0; CHUNK_TOTAL_BLOCKS / 2],
+            sky_light: vec![0xFF; CHUNK_TOTAL_BLOCKS / 2],
         }
     }
 }
 
-#[repr(u8)]
-enum BlockType {
+#[repr(i16)]
+#[derive(Debug, Clone, Copy)]
+#[derive(FromPrimitive)]
+pub enum BlockType {
+    None = -1,
     Air,
     Stone,
     Grass,
@@ -127,8 +120,9 @@ impl ToBytes for MapChunk {
         buffer.write_u8(self.size_y).unwrap();
         buffer.write_u8(self.size_z).unwrap();
 
-        buffer.write_i32::<BE>(self.compressed_data.compressed_size).unwrap();
-        buffer.write_all(&self.compressed_data.compressed_data).unwrap();
+        let block_buf = self.compressed_data.compress();
+        buffer.write_i32::<BE>(block_buf.len() as i32).unwrap();
+        buffer.write_all(&block_buf).unwrap();
 
         buffer
     }

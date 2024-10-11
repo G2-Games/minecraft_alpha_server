@@ -54,7 +54,7 @@ impl PlayerPositionAndLook {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct PlayerPosition {
     pub position_x: f64,
     pub position_y: f64,
@@ -95,7 +95,7 @@ impl PlayerPosition {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct PlayerLook {
     pub yaw: f32,
     pub pitch: f32,
