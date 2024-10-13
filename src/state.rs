@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    chunk::{BlockType, MapChunk},
-    position::{PlayerLook, PlayerPosition, PlayerPositionLook},
+    blocks_items::BlockItem, chunk::MapChunk, position::{PlayerLook, PlayerPosition, PlayerPositionLook}
 };
 
 pub struct GameState {
@@ -29,7 +28,7 @@ impl GameState {
 pub struct PlayerState {
     eid: i32,
     username: String,
-    holding: i16,
+    holding: BlockItem,
     position_look: PlayerPositionLook,
 }
 
@@ -39,7 +38,7 @@ impl PlayerState {
         Self {
             eid,
             username,
-            holding: -1,
+            holding: BlockItem::Unknown,
             position_look: PlayerPositionLook::default(),
         }
     }
@@ -48,7 +47,7 @@ impl PlayerState {
         Self {
             eid: -1,
             username: String::new(),
-            holding: -1,
+            holding: BlockItem::Unknown,
             position_look: PlayerPositionLook::default(),
         }
     }
@@ -77,7 +76,7 @@ impl PlayerState {
         &self.position_look
     }
 
-    pub fn holding(&self) -> &BlockType {
+    pub fn holding(&self) -> &BlockItem {
         &self.holding
     }
 
@@ -89,7 +88,7 @@ impl PlayerState {
         self.position_look.look = look
     }
 
-    pub fn set_holding(&mut self, holding: i16) {
+    pub fn set_holding(&mut self, holding: BlockItem) {
         self.holding = holding
     }
 }

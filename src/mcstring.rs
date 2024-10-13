@@ -2,10 +2,16 @@ use std::{fmt::Display, io::{self, Read, Write}};
 
 use byteorder::{ReadBytesExt, WriteBytesExt, BE};
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct MCString {
     len: u16,
     chars: Vec<u8>,
+}
+
+impl MCString {
+    pub fn len(&self) -> usize {
+        self.len as usize
+    }
 }
 
 impl TryFrom<&str> for MCString {

@@ -1,9 +1,8 @@
 use byteorder::{WriteBytesExt, BE};
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
-use num_derive::FromPrimitive;
+use flate2::{Compression, write::ZlibEncoder};
 use std::io::prelude::*;
 
+use crate::blocks_items::Block;
 use crate::byte_ops::ToBytes;
 
 #[derive(Debug, Clone)]
@@ -71,13 +70,13 @@ impl BlockArray {
                 for z in 0..CHUNK_WIDTH_Z {
                     let pos = y + (z * (CHUNK_HEIGHT_Y)) + (x * (CHUNK_HEIGHT_Y) * (CHUNK_WIDTH_X));
                     if y == 7 {
-                        blocks[pos] = BlockType::Grass as u8;
+                        blocks[pos] = Block::Grass as u8;
                     } else if y > 0 && y < 7 {
-                        blocks[pos] = BlockType::Dirt as u8;
+                        blocks[pos] = Block::Dirt as u8;
                     } else if y == 0 {
-                        blocks[pos] = BlockType::Bedrock as u8;
+                        blocks[pos] = Block::Bedrock as u8;
                     } else {
-                        blocks[pos] = BlockType::Air as u8;
+                        blocks[pos] = Block::Air as u8;
                     }
                 }
             }
@@ -90,21 +89,6 @@ impl BlockArray {
             sky_light: vec![0xFF; CHUNK_TOTAL_BLOCKS / 2],
         }
     }
-}
-
-#[repr(i16)]
-#[derive(Debug, Clone, Copy)]
-#[derive(FromPrimitive)]
-pub enum BlockType {
-    None = -1,
-    Air,
-    Stone,
-    Grass,
-    Dirt,
-    Cobblestone,
-    Planks,
-    Sapling,
-    Bedrock,
 }
 
 impl ToBytes for MapChunk {

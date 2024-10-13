@@ -1,10 +1,16 @@
-use std::ops;
+use std::{io::Read, ops};
 
 pub trait ToBytes: Sized {
     /// A byte array which can store a packed representation of this type.
     type Bytes: ByteArray;
 
     fn to_bytes(self) -> Self::Bytes;
+}
+
+pub trait FromBytes: Sized {
+    type Bytes: ByteArray;
+
+    fn from_bytes<R: Read>(stream: &mut R) -> Self;
 }
 
 mod private {

@@ -1,6 +1,54 @@
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
+use std::fmt::Debug;
+
+/// A trait to unify [`Block`]s and [`Item`]s.
+pub trait BlockItemID: Debug + Clone + PartialEq {
+    /// The ID of the Block/Item
+    fn id(&self) -> i16;
+
+    /// The Block/Item corresponding to an ID
+    fn from_id(id: i16) -> Self;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockItem {
+    Unknown,
+    Block(Block),
+    Item(Item),
+}
+
+impl BlockItemID for BlockItem {
+    fn id(&self) -> i16 {
+        match self {
+            Self::Unknown => -1,
+            BlockItem::Block(b) => *b as i16,
+            BlockItem::Item(i) => *i as i16 + 255,
+        }
+    }
+
+    fn from_id(id: i16) -> Self {
+        if id <= 255 {
+            if let Some(b) = Block::from_i16(id) {
+                Self::Block(b)
+            } else {
+                Self::Unknown
+            }
+        } else {
+            if let Some(b) = Item::from_i16(id - 255) {
+                Self::Item(b)
+            } else {
+                Self::Unknown
+            }
+        }
+    }
+}
+
 #[repr(i16)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(FromPrimitive)]
 pub enum Block {
-    Unknown = -1,
+    Air = 0,
     Stone = 1,
     Grass = 2,
     Dirt = 3,
@@ -79,110 +127,126 @@ pub enum Block {
     PumpkinLantern = 91,
 }
 
+
+
 #[repr(i16)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(FromPrimitive)]
 pub enum Item {
-    Unknown = -1,
-    ShovelSteel = 256,
-    PickaxeSteel = 257,
-    AxeSteel = 258,
-    FlintAndSteel = 259,
-    AppleRed = 260,
-    Bow = 261,
-    Arrow = 262,
-    Coal = 263,
-    Diamond = 264,
-    IngotIron = 265,
-    IngotGold = 266,
-    SwordSteel = 267,
-    SwordWood = 268,
-    ShovelWood = 269,
-    PickaxeWood = 270,
-    AxeWood = 271,
-    SwordStone = 272,
-    ShovelStone = 273,
-    PickaxeStone = 274,
-    AxeStone = 275,
-    SwordDiamond = 276,
-    ShovelDiamond = 277,
-    PickaxeDiamond = 278,
-    AxeDiamond = 279,
-    Stick = 280,
-    BowlEmpty = 281,
-    BowlSoup = 282,
-    SwordGold = 283,
-    ShovelGold = 284,
-    PickaxeGold = 285,
-    AxeGold = 286,
-    Silk = 287,
-    Feather = 288,
-    Gunpowder = 289,
-    HoeWood = 290,
-    HoeStone = 291,
-    HoeSteel = 292,
-    HoeDiamond = 293,
-    HoeGold = 294,
-    Seeds = 295,
-    Wheat = 296,
-    Bread = 297,
-    HelmetLeather = 298,
-    PlateLeather = 299,
-    LegsLeather = 300,
-    BootsLeather = 301,
-    HelmetChain = 302,
-    PlateChain = 303,
-    LegsChain = 304,
-    BootsChain = 305,
-    HelmetSteel = 306,
-    PlateSteel = 307,
-    LegsSteel = 308,
-    BootsSteel = 309,
-    HelmetDiamond = 310,
-    PlateDiamond = 311,
-    LegsDiamond = 312,
-    BootsDiamond = 313,
-    HelmetGold = 314,
-    PlateGold = 315,
-    LegsGold = 316,
-    BootsGold = 317,
-    Flint = 318,
-    PorkRaw = 319,
-    PorkCooked = 320,
-    Painting = 321,
-    AppleGold = 322,
-    Sign = 323,
-    DoorWood = 324,
-    BucketEmpty = 325,
-    BucketWater = 326,
-    BucketLava = 327,
-    MinecartEmpty = 328,
-    Saddle = 329,
-    DoorSteel = 330,
-    Redstone = 331,
-    Snowball = 332,
-    Boat = 333,
-    Leather = 334,
-    BucketMilk = 335,
-    Brick = 336,
-    Clay = 337,
-    Reed = 338,
-    Paper = 339,
-    Book = 340,
-    SlimeBall = 341,
-    MinecartCrate = 342,
-    MinecartPowered = 343,
-    Egg = 344,
-    Compass = 345,
-    FishingRod = 346,
-    PocketSundial = 347,
-    LightStoneDust = 348,
-    FishRaw = 349,
-    FishCooked = 350,
+    ShovelSteel = 0,
+    PickaxeSteel = 1,
+    AxeSteel = 2,
+    FlintAndSteel = 3,
+    AppleRed = 4,
+    Bow = 5,
+    Arrow = 6,
+    Coal = 7,
+    Diamond = 8,
+    IngotIron = 9,
+    IngotGold = 10,
+    SwordSteel = 11,
+    SwordWood = 12,
+    ShovelWood = 13,
+    PickaxeWood = 14,
+    AxeWood = 15,
+    SwordStone = 16,
+    ShovelStone = 17,
+    PickaxeStone = 18,
+    AxeStone = 19,
+    SwordDiamond = 20,
+    ShovelDiamond = 21,
+    PickaxeDiamond = 22,
+    AxeDiamond = 23,
+    Stick = 24,
+    BowlEmpty = 25,
+    BowlSoup = 26,
+    SwordGold = 27,
+    ShovelGold = 28,
+    PickaxeGold = 29,
+    AxeGold = 30,
+    Silk = 31,
+    Feather = 32,
+    Gunpowder = 33,
+    HoeWood = 34,
+    HoeStone = 35,
+    HoeSteel = 36,
+    HoeDiamond = 37,
+    HoeGold = 38,
+    Seeds = 39,
+    Wheat = 40,
+    Bread = 41,
+    HelmetLeather = 42,
+    PlateLeather = 43,
+    LegsLeather = 44,
+    BootsLeather = 45,
+    HelmetChain = 46,
+    PlateChain = 47,
+    LegsChain = 48,
+    BootsChain = 49,
+    HelmetSteel = 50,
+    PlateSteel = 51,
+    LegsSteel = 52,
+    BootsSteel = 53,
+    HelmetDiamond = 54,
+    PlateDiamond = 55,
+    LegsDiamond = 56,
+    BootsDiamond = 57,
+    HelmetGold = 58,
+    PlateGold = 59,
+    LegsGold = 60,
+    BootsGold = 61,
+    Flint = 62,
+    PorkRaw = 63,
+    PorkCooked = 64,
+    Painting = 65,
+    AppleGold = 66,
+    Sign = 67,
+    DoorWood = 68,
+    BucketEmpty = 69,
+    BucketWater = 70,
+    BucketLava = 71,
+    MinecartEmpty = 72,
+    Saddle = 73,
+    DoorSteel = 74,
+    Redstone = 75,
+    Snowball = 76,
+    Boat = 77,
+    Leather = 78,
+    BucketMilk = 79,
+    Brick = 80,
+    Clay = 81,
+    Reed = 82,
+    Paper = 83,
+    Book = 84,
+    SlimeBall = 85,
+    MinecartCrate = 86,
+    MinecartPowered = 87,
+    Egg = 88,
+    Compass = 89,
+    FishingRod = 90,
+    PocketSundial = 91,
+    LightStoneDust = 92,
+    FishRaw = 93,
+    FishCooked = 94,
     Record13 = 2000,
     RecordCat = 2001,
 }
 
-impl Item {
-    fn index() -> i16 {
-        256
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ItemStack {
+    pub stack_size: i32,
+    pub animations_to_go: i32,
+    pub item_id: BlockItem,
+    pub item_damage: i32,
+}
+
+impl ItemStack {
+    pub fn new(item_id: i32, stack_size: i32, item_damage: i32) -> Self {
+        Self {
+            stack_size,
+            item_id: BlockItem::from_id(item_id as i16),
+            item_damage,
+            animations_to_go: -1,
+        }
     }
 }

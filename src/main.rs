@@ -1,49 +1,45 @@
-mod utils;
+mod mcstring;
 mod byte_ops;
 mod chunk;
 mod position;
 mod state;
 mod player;
 mod blocks_items;
+mod entity_id;
+mod packets;
 
-use std::{io::{self, Write}, net::{TcpListener, TcpStream}, sync::{atomic::{self, AtomicI32}, Arc, RwLock}, thread};
+use std::{io::{self, Write}, net::{TcpListener, TcpStream}, process::exit, sync::{Arc, RwLock}, thread};
 
 use base16ct::lower::encode_string;
 use chunk::{BlockArray, MapChunk, PreChunk};
-use log::{error, info, warn};
+use entity_id::ENTITY_ID;
+use log::{debug, error, info};
 use byteorder::{ReadBytesExt, WriteBytesExt, BE};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use byte_ops::ToBytes;
-use player::{DiggingStatus, PlayerBlockPlacement};
+use packets::{packet15_place::Packet15Place, packet1_login, Packet};
+use player::DiggingStatus;
 use position::{PlayerLook, PlayerPosition, PlayerPositionLook};
 use state::{GameState, PlayerState};
-use utils::{MCString, ReadMCString, WriteMCString};
+use mcstring::{MCString, ReadMCString, WriteMCString};
 use rand::random;
-
-/// The current Entity ID. Incremented by one every time there is a new entity.
-///
-/// This value should rarely be accessed directly, and definitely never updated.
-static ENTITY_ID: AtomicI32 = AtomicI32::new(0);
-
-/// Get an Entity ID and increment the global value by 1.
-#[inline]
-fn get_eid() -> i32 {
-    let eid = ENTITY_ID.load(atomic::Ordering::Relaxed);
-    ENTITY_ID.store(eid + 1, atomic::Ordering::Relaxed);
-
-    eid
-}
 
 fn main() {
     colog::default_builder()
         .filter_level(log::LevelFilter::Debug)
         .init();
 
-    info!("Setting up game state");
+    info!("Starting Minecraft server version Beta 1.1_02");
     let game_state: Arc<RwLock<GameState>> = Arc::new(RwLock::new(GameState::new()));
 
-    let listener = TcpListener::bind("0.0.0.0:25565").unwrap();
+    let listener = match TcpListener::bind("0.0.0.0:25565") {
+        Ok(l) => l,
+        Err(e) => {
+            error!("Starting server failed: {e}");
+            exit(1)
+        },
+    };
     info!("Server started and listening on {}", listener.local_addr().unwrap());
 
     for mut connection in listener.incoming().filter_map(|c| c.ok()) {
@@ -82,16 +78,16 @@ fn player_loop(
             break;
         }
 
-        if player_state.is_valid() {
-            if game_state.read().unwrap().player_list().get(player_state.username()).is_some_and(|p| *p != player_state)
-                || game_state.read().unwrap().player_list().get(player_state.username()).is_none()
-            {
-                game_state.write()
-                    .unwrap()
-                    .player_list_mut()
-                    .insert(player_state.username().clone(), player_state.clone());
-            }
+        if player_state.is_valid()
+            && (game_state.read().unwrap().player_list().get(player_state.username()).is_some_and(|p| *p != player_state)
+            || game_state.read().unwrap().player_list().get(player_state.username()).is_none())
+        {
+             game_state.write()
+                 .unwrap()
+                 .player_list_mut()
+                 .insert(player_state.username().clone(), player_state.clone());
         }
+
 
     }
 
@@ -115,22 +111,19 @@ fn handle_command(
             info!("Handshake with {username} successful");
         },
         Command::Login => {
-            let protocol_version = connection.read_u32::<BE>()?;
-            let username = connection.read_mcstring()?;
-            // These are mostly useless
-            let _password = connection.read_mcstring()?;
-            let _map_seed = connection.read_i64::<BE>()?;
-            let _dimension = connection.read_i8()?;
+            let login_info = packet1_login::Packet1Login::read_from(&mut connection)?;
 
             // Return a successful login packet to the client
-            let eid = get_eid();
-            let login_packet = ServerLoginPacket::new(eid, 0, 0);
-            connection.write_u8(Command::Login as u8).unwrap();
-            connection.write_all(&login_packet.to_bytes())?;
+            let eid = ENTITY_ID.get();
+            let login_packet = packet1_login::Packet1Login::new(eid, 0, 0);
+            connection.write_u8(Command::Login as u8)?;
+            login_packet.write_into(&mut connection)?;
 
-            info!("{username} logged in. Protocol version {protocol_version}");
-            *player_state = PlayerState::new(username.to_string(), eid);
+            info!("{} [{}] logged in with entity id {}", login_info.username, connection.peer_addr().unwrap(), eid);
 
+            *player_state = PlayerState::new(login_info.username.to_string(), eid);
+
+            // Send "chunks" to the player. This simulates a flat-world of 20 by 20 chunks.
             for i in -10..10 {
                 for o in -10..10 {
                     let x = i * 16;
@@ -186,7 +179,7 @@ fn handle_command(
         }
         Command::HoldingChange => {
             let _unused = connection.read_i32::<BE>()?;
-            let block_id = connection.read_i16::<BE>()?;
+            let _block_id = connection.read_i16::<BE>()?;
         }
         Command::PlayerDigging => {
             let _status = DiggingStatus::from_u8(connection.read_u8()?).unwrap();
@@ -196,7 +189,8 @@ fn handle_command(
             let _face = connection.read_u8()?;
         }
         Command::PlayerBlockPlacement => {
-            let _status = PlayerBlockPlacement::from_bytes(&mut connection);
+            let status = Packet15Place::read_from(&mut connection)?;
+            dbg!(status);
         }
         Command::Animation => {
             let _eid = connection.read_i32::<BE>()?;
@@ -209,12 +203,15 @@ fn handle_command(
         }
         Command::KeepAlive => {
             connection.write_u8(Command::KeepAlive as u8)?;
+            info!("Keepalive!");
         }
         Command::UpdateHealth => {
             connection.read_u8()?;
         }
         c => unimplemented!("This command ({c:?}) is probably `Server -> Client` only; thus it is unimplemented for the other way around!")
     }
+
+    connection.write_u8(Command::KeepAlive as u8)?;
 
     Ok(())
 }
@@ -259,39 +256,4 @@ enum Command {
     BlockChange = 0x35,
     ComplexEntities = 0x3B,
     Disconnect = 0xFF,
-}
-
-struct ServerLoginPacket {
-    entity_id: i32,
-    unknown1: MCString,
-    unknown2: MCString,
-    map_seed: i64,
-    dimension: i8,
-}
-
-impl ServerLoginPacket {
-    pub fn new(entity_id: i32, map_seed: i64, dimension: i8) -> Self {
-        Self {
-            entity_id,
-            unknown1: MCString::default(),
-            unknown2: MCString::default(),
-            map_seed,
-            dimension,
-        }
-    }
-}
-
-impl ToBytes for ServerLoginPacket {
-    type Bytes = Vec<u8>;
-
-    fn to_bytes(self) -> Self::Bytes {
-        let mut out_buf = Vec::new();
-        out_buf.write_i32::<BE>(self.entity_id).unwrap();
-        out_buf.write_mcstring(&self.unknown1).unwrap();
-        out_buf.write_mcstring(&self.unknown2).unwrap();
-        out_buf.write_i64::<BE>(self.map_seed).unwrap();
-        out_buf.write_i8(self.dimension).unwrap();
-
-        out_buf
-    }
 }
