@@ -1,4 +1,4 @@
 # Alpha Server
 A server written in rust or something idk
 
-Targeting Minecraft Alpha `1.2.6`, server version `0.2.8`.
+Targeting Minecraft Beta `1.1_02`, protocol version `8`.
